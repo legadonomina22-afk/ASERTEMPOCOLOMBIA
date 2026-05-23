@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validador de Provisiones y Seguridad Social</title>
+    <!-- Tailwind CSS para estilos rápidos y profesionales -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS para lectura e importación/exportación de archivos de Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-orange-700 text-slate-800 font-sans min-h-screen p-4 md:p-8">
+
+    <div class="max-w-[1600px] mx-auto bg-white p-6 rounded-xl shadow-2xl border border-orange-800/30 relative">
+        
+        <!-- ENCABEZADO PRINCIPAL CON LOGO -->
+        <header class="border-b border-slate-200 pb-6 mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+            <div class="flex items-center gap-4">
+                <img src="logo-asertempo.png" alt="Logo Asertempo" class="h-12 w-auto object-contain">
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 uppercase tracking-tight">Validador de Provisiones y Seguridad Social</h1>
+                    <p class="text-sm text-slate-500 mt-1">Consulta Masiva (Por Factura) o Detallada (Por Empleado)</p>
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-3 w-full lg:w-auto">
+                <label class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-5 py-2.5 rounded cursor-pointer transition-colors shadow-sm text-sm">
+                    📂 Cargar Base (Excel)
+                    <input type="file" id="excel_file" accept=".xlsx, .xls, .csv" class="hidden">
+                </label>
+                <button id="btn_exportar" onclick="exportarReporteExcel()" class="hidden bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-5 py-2.5 rounded transition-colors shadow-sm text-sm">
+                    📥 Descargar Consulta Actual (.XLSX)
+                </button>
+            </div>
+        </header>
+
+        <!-- PANEL DE BÚSQUEDA DUAL -->
+        <div id="filter_panel" class="hidden bg-slate-100 p-5 rounded border border-slate-200 mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white p-4 rounded border border-slate-200 shadow-sm">
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Consulta Masiva (Código Factura)</label>
+                <input type="text" id="filtro_factura" oninput="aplicarFiltros()" placeholder="🔎 Ingrese Código de Factura (Ej: FAC-001)" class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            </div>
+            <div class="bg-white p-4 rounded border border-slate-200 shadow-sm">
+                <label class="block text-xs font-bold text-slate-500 uppercase mb-2">Consulta Individual (Empleado)</label>
+                <input type="text" id="filtro_general" oninput="aplicarFiltros()" placeholder="🔎 Ingrese Cédula o Nombre del Empleado" class="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            </div>
+        </div>
+
+        <!-- REPORTE DE RESUMEN CONSOLIDADO -->
+        <div id="summary_row" class="hidden mb-6">
+            <h2 class="text-xs font-bold text-slate-500 uppercase mb-2">Consolidado de la Consulta Actual (<span id="lbl_mostrando_regs">0</span> registros)</h2>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-slate-900">
+                <div class="bg-white p-4 border-l-4 border-slate-400 shadow-sm rounded-r">
+                    <span class="block text-[10px] font-bold uppercase text-slate-500">Total Devengado Base</span>
+                    <span id="sum_devengado" class="text-lg font-bold">$ 0</span>
+                </div>
+                <div class="bg-white p-4 border-l-4 border-blue-500 shadow-sm rounded-r">
+                    <span class="block text-[10px] font-bold uppercase text-blue-600">Detalle Provisiones</span>
+                    <span id="sum_prestaciones" class="text-lg font-bold text-blue-700">$ 0</span>
+                </div>
+                <div class="bg-white p-4 border-l-4 border-indigo-500 shadow-sm rounded-r">
+                    <span class="block text-[10px] font-bold uppercase text-indigo-600">Seguridad Social</span>
+                    <span id="sum_seguridad" class="text-lg font-bold text-indigo-700">$ 0</span>
+                </div>
+                <div class="bg-white p-4 border-l-4 border-teal-500 shadow-sm rounded-r">
+                    <span class="block text-[10px] font-bold uppercase text-teal-600">Parafiscales</span>
+                    <span id="sum_parafiscales" class="text-lg font-bold text-teal-700">$ 0</span>
+                </div>
+                <div class="bg-slate-900 p-4 border-l-4 border-emerald-400 shadow-sm rounded-r col-span-2 md:col-span-1 text-white">
+                    <span class="block text-[10px] font-bold uppercase text-slate-400">Gran Total Cargos</span>
+                    <span id="sum_total" class="text-lg font-bold text-emerald-400">$ 0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- MATRIZ DE DATOS -->
+        <div class="border border-slate-300 rounded shadow-sm overflow-hidden bg-white">
+            <div class="overflow-x-auto">
+                <table class="w-full text-[11px] text-left border-collapse" id="tabla_reporte">
+                    <thead class="bg-slate-900 text-slate-200 uppercase tracking-wider border-b border-slate-700">
+                        <tr>
+                            <th class="p-2.5 font-bold border-r border-slate-700" rowspan="2">Factura</th>
+                            <th class="p-2.5 font-bold border-r border-slate-700" rowspan="2">Documento</th>
+                            <th class="p-2.5 font-bold border-r border-slate-700" rowspan="2">Empleado</th>
+                            <th class="p-2.5 font-bold text-right border-r border-slate-700 bg-slate-800" rowspan="2">Base Devengado</th>
+                            <th class="p-1.5 text-center bg-blue-900 border-b border-blue-800 border-r border-slate-700 text-blue-100" colspan="4">Detalle de Provisiones</th>
+                            <th class="p-1.5 text-center bg-indigo-900 border-b border-indigo-800 border-r border-slate-700 text-indigo-100" colspan="3">Seguridad Social</th>
+                            <th class="p-1.5 text-center bg-teal-900 border-b border-teal-800 border-r border-slate-700 text-teal-100" colspan="3">Parafiscales</th>
+                            <th class="p-2.5 font-bold text-right text-emerald-400 bg-slate-800" rowspan="2">Total Cargo</th>
+                        </tr>
+                        <tr class="bg-slate-800 text-[10px] text-slate-300 border-b border-slate-700">
+                            <th class="p-2 text-right border-r border-slate-700 bg-blue-900/40">Prima (8.33%)</th>
+                            <th class="p-2 text-right border-r border-slate-700 bg-blue-900/40">Cesantías (8.33%)</th>
+                            <th class="p-2 text-right border-r border-slate-700 bg-blue-900/40">Int. Ces. (1%)</th>
+                            <th class="p-2 text-right border-r border-slate-700 bg-blue-900/40">Vacaciones (4.17%)</th>
+                            <th class="p-2 text-right border-r border-slate-700 bg-indigo-900/40">Pensión (12%)</th>
+                            <th class="p-2 text-right border-r border-slate-700 bg-indigo-900/40">Salud (8.5%)</th>
+                            <th class="p-2 text-right border-r border-slate-700 bg-indigo-900/40">ARL I (0.522%)</th>
+                            <th class="p-2 text-right border-r border-slate-700 bg-teal-900/40">CCF (4%)</th>
+                            <th class="p-2 text-right border-r border-slate-700 bg-teal-900/40">SENA (2%)</th>
+                            <th class="p-2 text-right border-r border-slate-700 bg-teal-900/40">ICBF (3%)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="report_body" class="divide-y divide-slate-200 font-mono text-slate-700">
+                        <tr>
+                            <td colspan="15" class="p-8 text-center text-slate-400 font-sans text-sm">
+                                ℹ️ Esperando base de datos contable... Por favor, use el botón superior para cargar el archivo Excel maestro.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI DEL CHATBOT: ROMARIO IA -->
+    <div id="romario-chat-container" class="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+        <!-- Ventana del Chat -->
+        <div id="romario-window" class="hidden w-80 h-96 bg-white rounded-xl shadow-2xl border border-slate-200 flex flex-col mb-4 overflow-hidden transition-all">
+            <div class="bg-slate-900 text-white p-3 flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-orange-600 rounded-full flex justify-center items-center font-bold">R</div>
+                    <div>
+                        <h3 class="font-bold text-sm leading-tight">ROMARIO IA</h3>
+                        <p class="text-[10px] text-slate-300">Experto en Nómina</p>
+                    </div>
+                </div>
+                <button onclick="toggleRomario()" class="text-slate-300 hover:text-white">&times;</button>
+            </div>
+            <div id="romario-messages" class="flex-1 p-3 overflow-y-auto bg-slate-50 flex flex-col gap-3 text-sm">
+                <!-- Mensaje de bienvenida -->
+                <div class="bg-white border border-slate-200 p-2 rounded-lg rounded-tl-none self-start max-w-[85%] shadow-sm">
+                    ¡Hola! Soy <strong>ROMARIO IA</strong>. Estoy entrenado exclusivamente para responder tus dudas sobre cálculos de nómina, provisiones y seguridad social en Colombia. ¿En qué te ayudo hoy?
+                </div>
+            </div>
+            <div class="p-2 bg-white border-t border-slate-200 flex gap-2">
+                <input type="text" id="romario-input" onkeypress="handleRomarioEnter(event)" placeholder="Pregunta sobre nómina..." class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-orange-600">
+                <button onclick="sendRomarioMessage()" class="bg-orange-700 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-bold">Enviar</button>
+            </div>
+        </div>
+        <!-- Botón Flotante -->
+        <button onclick="toggleRomario()" class="bg-slate-900 hover:bg-slate-800 text-white w-14 h-14 rounded-full shadow-2xl border-2 border-orange-600 flex justify-center items-center transition-transform hover:scale-105">
+            <span class="text-xl font-bold">R</span>
+        </button>
+    </div>
+
+    <!-- Vinculación del script JavaScript -->
+    <script src="script.js"></script>
+</body>
+</html>
